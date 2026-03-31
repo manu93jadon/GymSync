@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  COACH
+  MEMBER
+}
+
+enum Tier {
+  BASIC
+  GOLD
+}
+
+enum SessionStatus {
+  PENDING
+  APPROVED
+  DENIED
+  AUTO_APPROVED
+}
+
+model User {
+  id        String  @id @default(cuid())
+  email     String  @unique
+  password  String
+  name      String
+  role      Role    @default(MEMBER)
+  tier      Tier    @default(BASIC)
+  coachId   String?
+
+  coach       User?     @relation("CoachMembers", fields: [coachId], references: [id])
+  members     User[]    @relation("CoachMembers")
+  sessions    Session[] @relation("MemberSessions")
+  coached     Session[] @relation("CoachSessions")
+
+  dietChart  String? // Gold: markdown text or PDF URL
+  bcaResults Json?   // Gold: { date, bodyFat, muscleMass, weight, ... }[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([coachId])
+  @@index([role])
+}
+
+model Session {
+  id       String        @id @default(cuid())
+  date     DateTime
+  status   SessionStatus @default(PENDING)
+  memberId String
+  coachId  String
+
+  member   User   @relation("MemberSessions", fields: [memberId], references: [id])
+  coach    User   @relation("CoachSessions", fields: [coachId], references: [id])
+
+  rating   Int?    // 1–5, set by member on approval
+  feedback String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([coachId])
+  @@index([status])
+}
