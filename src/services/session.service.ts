@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { decrementSessionsLeft } from "@/services/plan.service";
 import type { SessionStatus } from "@prisma/client";
 
 export async function createSession(coachId: string, memberId: string, date: Date) {
-  // Verify coach-member relationship
   const member = await prisma.user.findUnique({
     where: { id: memberId },
     select: { coachId: true },
@@ -33,27 +33,40 @@ export async function acknowledgeSession(
   if (session.memberId !== memberId) throw new Error("Unauthorized");
   if (session.status !== "PENDING") throw new Error("Session is no longer pending");
 
-  return prisma.session.update({
+  const updated = await prisma.session.update({
     where: { id: sessionId },
     data: {
       status,
       ...(status === "APPROVED" && { rating, feedback }),
     },
   });
+
+  if (status === "APPROVED") {
+    await decrementSessionsLeft(memberId);
+  }
+
+  return updated;
 }
 
 export async function autoApproveExpiredSessions() {
-  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48 hours ago
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
-  const result = await prisma.session.updateMany({
-    where: {
-      status: "PENDING",
-      createdAt: { lt: cutoff },
-    },
+  const pending = await prisma.session.findMany({
+    where: { status: "PENDING", createdAt: { lt: cutoff } },
+    select: { id: true, memberId: true },
+  });
+
+  if (pending.length === 0) return 0;
+
+  await prisma.session.updateMany({
+    where: { id: { in: pending.map((s) => s.id) } },
     data: { status: "AUTO_APPROVED" },
   });
 
-  return result.count;
+  // Decrement sessions left for each approved member
+  await Promise.all(pending.map((s) => decrementSessionsLeft(s.memberId)));
+
+  return pending.length;
 }
 
 export async function getSessionsForMember(memberId: string) {
@@ -80,6 +93,27 @@ export async function getSessionStats(coachId: string) {
   const counts = await prisma.session.groupBy({
     by: ["status"],
     where: { coachId },
+    _count: true,
+  });
+
+  const map: Record<SessionStatus, number> = {
+    PENDING: 0,
+    APPROVED: 0,
+    DENIED: 0,
+    AUTO_APPROVED: 0,
+  };
+
+  for (const item of counts) {
+    map[item.status] = item._count;
+  }
+
+  return map;
+}
+
+export async function getMemberSessionStats(memberId: string) {
+  const counts = await prisma.session.groupBy({
+    by: ["status"],
+    where: { memberId },
     _count: true,
   });
 

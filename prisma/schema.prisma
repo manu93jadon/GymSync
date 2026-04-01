@@ -25,6 +25,12 @@ enum SessionStatus {
   AUTO_APPROVED
 }
 
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+}
+
 model User {
   id        String  @id @default(cuid())
   email     String  @unique
@@ -34,13 +40,14 @@ model User {
   tier      Tier    @default(BASIC)
   coachId   String?
 
-  coach       User?     @relation("CoachMembers", fields: [coachId], references: [id])
-  members     User[]    @relation("CoachMembers")
-  sessions    Session[] @relation("MemberSessions")
-  coached     Session[] @relation("CoachSessions")
+  coach       User?        @relation("CoachMembers", fields: [coachId], references: [id])
+  members     User[]       @relation("CoachMembers")
+  sessions    Session[]    @relation("MemberSessions")
+  coached     Session[]    @relation("CoachSessions")
+  memberPlans MemberPlan[]
 
-  dietChart  String? // Gold: markdown text or PDF URL
-  bcaResults Json?   // Gold: { date, bodyFat, muscleMass, weight, ... }[]
+  dietChart  String?
+  bcaResults Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -59,7 +66,7 @@ model Session {
   member   User   @relation("MemberSessions", fields: [memberId], references: [id])
   coach    User   @relation("CoachSessions", fields: [coachId], references: [id])
 
-  rating   Int?    // 1–5, set by member on approval
+  rating   Int?
   feedback String?
 
   createdAt DateTime @default(now())
@@ -68,4 +75,87 @@ model Session {
   @@index([memberId])
   @@index([coachId])
   @@index([status])
+}
+
+// ─── Plans & Features ────────────────────────────────────────────────────────
+
+model Feature {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  planFeatures PlanFeature[]
+
+  @@index([name])
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String?
+  price        Decimal  @db.Decimal(10, 2)
+  durationDays Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  planFeatures PlanFeature[]
+  memberPlans  MemberPlan[]
+
+  @@index([isActive])
+}
+
+model PlanFeature {
+  id        String  @id @default(cuid())
+  planId    String
+  featureId String
+  enabled   Boolean @default(false)
+
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureId])
+  @@index([planId])
+  @@index([featureId])
+}
+
+// ─── Member Subscriptions ────────────────────────────────────────────────────
+
+model MemberPlan {
+  id           String   @id @default(cuid())
+  memberId     String
+  planId       String
+  discountPct  Decimal  @default(0) @db.Decimal(5, 2)
+  startDate    DateTime @default(now())
+  endDate      DateTime
+  sessionsLeft Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  member   User      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@index([memberId])
+  @@index([planId])
+  @@index([memberId, isActive])
+  @@index([endDate])
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  memberPlanId String
+  amount       Decimal       @db.Decimal(10, 2)
+  discountPct  Decimal       @db.Decimal(5, 2)
+  finalAmount  Decimal       @db.Decimal(10, 2)
+  method       PaymentMethod
+  notes        String?
+  paidAt       DateTime      @default(now())
+
+  memberPlan MemberPlan @relation(fields: [memberPlanId], references: [id], onDelete: Cascade)
+
+  @@index([memberPlanId])
+  @@index([paidAt])
 }

@@ -9,6 +9,9 @@ import {
   Dumbbell,
   Salad,
   Activity,
+  UserCheck,
+  CreditCard,
+  ListChecks,
 } from "lucide-react";
 
 interface NavItem {
@@ -21,7 +24,10 @@ function getNavItems(role: Role, tier: Tier): NavItem[] {
   if (role === "ADMIN") {
     return [
       { href: "/admin", label: "Overview", icon: LayoutDashboard },
-      { href: "/admin/users", label: "Users", icon: Users },
+      { href: "/admin/coaches", label: "Coaches", icon: UserCheck },
+      { href: "/admin/members", label: "Members", icon: Users },
+      { href: "/admin/plans", label: "Plans", icon: CreditCard },
+      { href: "/admin/features", label: "Features", icon: ListChecks },
     ];
   }
   if (role === "COACH") {
